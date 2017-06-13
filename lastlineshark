@@ -1,0 +1,187 @@
+#!/bin/bash
+# Last line shark v0.3 - fullscreen viewer for multiple files
+# 2014 (c) Kurashov A.K., under GNU GPLv3
+
+# void new line before EOF
+function vnlbeof {
+	perl -pe 'chomp if eof'
+}
+
+function go_back {
+	CUR_PTR=$(($CUR_PTR-$1))
+	if [ "$CUR_PTR" -lt 0 ]; then
+		CUR_PTR=$MAX_PTR
+	fi
+}
+
+function go_forward {
+	CUR_PTR=$(($CUR_PTR+$1))
+	if [ "$CUR_PTR" -gt "$MAX_PTR" ]; then
+		CUR_PTR=0
+	fi
+}
+
+function print_prompt {
+	echo -e "-= Last line shark v0.3 =-\n\nImage ID: $CUR_PTR , Total images: $(($MAX_PTR+1))"
+	if [ "$#" -gt 0 ]; then
+		echo "$1"
+	fi
+}
+
+function show_info {
+	print_prompt
+	du -b $1
+	file $1
+	read -N 1 ttyin
+}
+
+function goto_id {
+	print_prompt "Go to ID?"
+	read NEW_PTR
+	if [ "$NEW_PTR" -gt "$CUR_PTR" ]; then
+		go_forward $(($NEW_PTR-$CUR_PTR))
+	else
+		go_back $(($CUR_PTR-$NEW_PTR))
+	fi
+}
+
+function gfxview {
+	FILE_TYPE=`file -b $1 | sed 's/,.*$//'`
+	case "$FILE_TYPE" in
+		"LZMA compressed data" )
+		lzcat $1 | vnlbeof
+		;;
+		"XZ compressed data" )
+		xzcat $1 | vnlbeof
+		;;
+		"lzip compressed data" )
+		zcat $1 | vnlbeof
+		;;
+		"bzip2 compressed data" )
+		bzcat $1 | vnlbeof
+		;;
+		"gzip compressed data" )
+		zcat $1 | vnlbeof
+		;;
+		"ASCII text" )
+		cat $1 | vnlbeof
+		;;
+		"Non-ISO extended-ASCII text" )
+		cat $1 | vnlbeof
+		;;
+		"ISO-8859 text" )
+		cat $1 | vnlbeof
+		;;
+		"SysEx File -" )
+		cat $1 | vnlbeof
+		;;
+		* )
+		print_prompt "Error: $1 - unknown file type."
+	esac
+	read -N 1 ttyin
+}
+
+function print_file_dne {
+	print_prompt
+	echo "File doesn't exists!"
+	read -N 1 ttyin
+}
+
+function showgfx {
+	if [ -f $1 ]; then
+		gfxview $1
+	else
+		print_file_dne
+	fi
+}
+
+function file_operation {
+	if [ -f $1 ]; then
+		case "$2" in
+		"remove" )
+		print_prompt "Removing file... Are you sure (y/N)?"
+		read -N 1 ttysure
+		if [ "$ttysure" == "y" ]; then
+			rm $1
+		fi
+		;;
+		"move" )
+		print_prompt "Move file to?"
+		read newfilename
+		if [ "$newfilename" != "" ]; then
+			mv -i $1 $newfilename
+			# new array name
+			if [ -d $newfilename ]; then
+				filebnm=`echo ${filename[$CUR_PTR]} | sed 's/^.*\///'`
+				filename[$CUR_PTR]="$newfilename/$filebnm"
+			else
+				filename[$CUR_PTR]=$newfilename
+			fi
+		fi
+		esac
+	else
+		print_file_dne
+	fi
+}
+
+# arguments check
+if [ "$#" -lt 1 ]; then
+	echo "usage: lastlineshark files"
+	exit
+fi
+# pointer to filenames array
+CUR_PTR=0
+# filling array
+for file in $@ ; do
+	filename[$CUR_PTR]=$file
+	CUR_PTR=$(($CUR_PTR+1))
+done
+# set limit and return to beginning
+MAX_PTR=$((CUR_PTR-1))
+CUR_PTR=0
+# infinite navigation loop
+while [ 1 ] ; do
+	clear
+	# view file
+	showgfx ${filename[$CUR_PTR]}
+	clear
+	# process user input
+	case "$ttyin" in
+		# back
+		"h" )
+		go_back 1
+		;;
+		# back jump
+		"j" )
+		go_back 10
+		;;
+		# forward
+		"l" )
+		go_forward 1
+		;;
+		# forward jump
+		"k" )
+		go_forward 10
+		;;
+		# show info
+		"i" )
+		show_info ${filename[$CUR_PTR]}
+		;;
+		# go to new id
+		"g" )
+		goto_id
+		;;
+		# remove file
+		"R" )
+		file_operation ${filename[$CUR_PTR]} "remove"
+		;;
+		# move file
+		"M" )
+		file_operation ${filename[$CUR_PTR]} "move"
+		;;
+		# quit
+		"q" )
+		exit
+	esac
+done
+clear
